@@ -20,8 +20,8 @@ DB_CONFIG = {<br/>
 4. the server certificate query
 USE master;<br/>
 BACKUP CERTIFICATE MyServerCert<br/>
-TO FILE = 'C:\TDE_backups\MyServerCert.cer'<br/>
+TO FILE = 'C:\backupPATH\MyServerCert.cer'<br/>
 WITH PRIVATE KEY (<br/>
-    FILE = 'C:\TDE_backups\MyServerCert.pvk',<br/>
+    FILE = 'C:\backupPATH\MyServerCert.pvk',<br/>
     ENCRYPTION BY PASSWORD = 'Pa$$w0rd'<br/>
 );<br/>
