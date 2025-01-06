@@ -1,0 +1,295 @@
+import shiny
+from shiny import ui, render, reactive
+import nest_asyncio
+import pyodbc
+from datetime import datetime
+
+# Apply nest_asyncio to allow nested event loops
+nest_asyncio.apply()
+
+# SQL Server connection details
+DB_CONFIG = {
+    "server": "Server Name",
+    "database": "LARCarRental"
+}
+
+# Establish connection to the SQL Server
+def get_db_connection():
+    try:
+        connection = pyodbc.connect(
+            f"DRIVER={{ODBC Driver 17 for SQL Server}};"
+            f"SERVER={DB_CONFIG['server']};"
+            f"DATABASE={DB_CONFIG['database']};"
+            f"Trusted_Connection=yes;"
+        )
+        return connection
+    except Exception as e:
+        print("Error connecting to database:", e)
+        return None
+
+# Store login credentials for validation
+ADMIN_CREDENTIALS = {
+    "username": "admin",
+    "password": "password"
+}
+
+# Define UI for the app
+app_ui = ui.page_sidebar(
+    ui.sidebar(
+        ui.input_text("username", "Username"),
+        ui.input_password("password", "Password"),
+        ui.input_action_button("login_btn", "Login"),
+        ui.input_action_button("logout_btn", "Logout", style="display:none;")  # Hidden initially
+    ),
+    ui.output_ui("dynamic_content")  # Dynamic content area
+)
+
+# Define server logic
+def server(input, output, session):
+    # Reactive variable to track login status
+    login_status = reactive.Value(False)
+    # Reactive variable for login error message
+    login_error_message = reactive.Value("")
+    # Reactive variable for delete confirmation message
+    delete_message = reactive.Value("")
+    # Reactive variable for insert rental confirmation message
+    insert_message = reactive.Value("")
+
+    # Validate login credentials
+    @reactive.Effect
+    def _():
+        if input.login_btn():
+            if (input.username().strip() == ADMIN_CREDENTIALS["username"] and 
+                input.password() == ADMIN_CREDENTIALS["password"]):
+                login_status.set(True)
+                login_error_message.set("")  # Clear error message on successful login
+            else:
+                login_status.set(False)
+                login_error_message.set("Incorrect username or password. Please try again.")  # Set error message
+
+    # Handle logout action
+    @reactive.Effect
+    def _():
+        if input.logout_btn():
+            login_status.set(False)
+            login_error_message.set("")  # Clear error message on logout
+
+    # Fetch customer data excluding the password
+    def fetch_customers():
+        connection = get_db_connection()
+        if connection:
+            try:
+                cursor = connection.cursor()
+                # Exclude the 'Password' column from the query
+                query = "SELECT CustomerID, Email, FirstName, LastName, Phone FROM Customers"
+                cursor.execute(query)
+                rows = cursor.fetchall()
+                connection.close()
+                return rows
+            except Exception as e:
+                print("Error fetching customers:", e)
+                return []
+        return []
+
+    # Fetch rental data
+    def fetch_rentals():
+        connection = get_db_connection()
+        if connection:
+            try:
+                cursor = connection.cursor()
+                query = "SELECT * FROM Rentals"
+                cursor.execute(query)
+                rows = cursor.fetchall()
+                connection.close()
+                return rows
+            except Exception as e:
+                print("Error fetching rentals:", e)
+                return []
+        return []
+
+    # Fetch all cars (not just available ones)
+    def fetch_all_cars():
+        connection = get_db_connection()
+        if connection:
+            try:
+                cursor = connection.cursor()
+                query = "SELECT * FROM Cars"
+                cursor.execute(query)
+                rows = cursor.fetchall()
+                connection.close()
+                return rows
+            except Exception as e:
+                print("Error fetching cars:", e)
+                return []
+        return []
+
+    # Delete rental record by rental ID
+    def delete_rental_by_id(rental_id):
+        connection = get_db_connection()
+        if connection:
+            try:
+                cursor = connection.cursor()
+                query = f"DELETE FROM Rentals WHERE RentalID = {rental_id}"
+                cursor.execute(query)
+                connection.commit()
+                connection.close()
+                return True
+            except Exception as e:
+                print(f"Error deleting rental: {e}")
+                return False
+        return False
+
+    # Insert new rental record
+    def insert_rental(customer_id, car_id, rental_start_date, rental_end_date, total_amount):
+        connection = get_db_connection()
+        if connection:
+            try:
+                cursor = connection.cursor()
+                query = f"""
+                    INSERT INTO Rentals (CustomerID, CarID, RentalStartDate, RentalEndDate, TotalAmount)
+                    VALUES (?, ?, ?, ?, ?)
+                """
+                cursor.execute(query, (customer_id, car_id, rental_start_date, rental_end_date, total_amount))
+                connection.commit()
+                connection.close()
+                return True
+            except Exception as e:
+                print(f"Error inserting rental: {e}")
+                return False
+        return False
+
+    # Dynamically render the main content
+    @output()
+    @render.ui
+    def dynamic_content():
+        if login_status():
+            # Fetch data for the tables
+            customers = fetch_customers()
+            rentals = fetch_rentals()
+            all_cars = fetch_all_cars()
+
+            # Customer table
+            customer_columns = ["Customer ID", "Email", "First Name", "Last Name", "Phone"]
+            customer_table_html = (
+                f"<table border='1' style='width:100%; border-collapse: collapse;'>"
+                f"<thead><tr>{''.join(f'<th>{col}</th>' for col in customer_columns)}</tr></thead>"
+                f"<tbody>{''.join('<tr>' + ''.join(f'<td>{cell}</td>' for cell in row) + '</tr>' for row in customers)}</tbody>"
+                f"</table>"
+                if customers
+                else "<p>No customer data found.</p>"
+            )
+
+            # Rental table
+            rental_columns = ["Rental ID", "Customer ID", "Car ID", "Rental Start Date", "Rental End Date", "Total Amount"]
+            rental_table_html = (
+                f"<table border='1' style='width:100%; border-collapse: collapse;'>"
+                f"<thead><tr>{''.join(f'<th>{col}</th>' for col in rental_columns)}</tr></thead>"
+                f"<tbody>{''.join('<tr>' + ''.join(f'<td>{cell}</td>' for cell in row) + '</tr>' for row in rentals)}</tbody>"
+                f"</table>"
+                if rentals
+                else "<p>No rental data found.</p>"
+            )
+
+            # All cars table
+            car_columns = ["Car ID", "Make", "Model", "Year", "License Plate", "Daily Rate"]
+            car_table_html = (
+                f"<table border='1' style='width:100%; border-collapse: collapse;'>"
+                f"<thead><tr>{''.join(f'<th>{col}</th>' for col in car_columns)}</tr></thead>"
+                f"<tbody>{''.join('<tr>' + ''.join(f'<td>{cell}</td>' for cell in row) + '</tr>' for row in all_cars)}</tbody>"
+                f"</table>"
+                if all_cars
+                else "<p>No cars found.</p>"
+            )
+
+            return ui.navset_tab(
+                ui.nav_panel(
+                    "Customer Info",
+                    ui.card(
+                        ui.card_header("Customer Information"),
+                        ui.HTML(customer_table_html)
+                    )
+                ),
+                ui.nav_panel(
+                    "Rentals",
+                    ui.card(
+                        ui.card_header("Rental Records"),
+                        ui.HTML(rental_table_html),
+                        ui.input_text("rental_id_to_delete", "Enter Rental ID to Delete"),
+                        ui.input_action_button("delete_rental_btn", "Delete Rental"),
+                        ui.HTML(f"<p>{delete_message()}</p>")  # Show delete confirmation message
+                    )
+                ),
+                ui.nav_panel(
+                    "All Cars",
+                    ui.card(
+                        ui.card_header("All Cars"),
+                        ui.HTML(car_table_html)
+                    )
+                ),
+                ui.nav_panel(
+                    "Add Rental",
+                    ui.card(
+                        ui.card_header("Add New Rental"),
+                        ui.input_select("customer_id", "Select Customer", [customer[0] for customer in customers]),
+                        ui.input_select("car_id", "Select Car", [car[0] for car in all_cars]),
+                        ui.input_date("rental_start_date", "Rental Start Date", value=datetime.today().date()),
+                        ui.input_date("rental_end_date", "Rental End Date", value=datetime.today().date()),
+                        ui.input_numeric("total_amount", "Total Amount", min=0, value=0),
+                        ui.input_action_button("add_rental_btn", "Add Rental"),
+                        ui.HTML(f"<p>{insert_message()}</p>")  # Show insert confirmation message
+                    )
+                ),
+                ui.nav_panel(
+                    "Logout",
+                    ui.card(
+                        ui.card_header("Logged In"),
+                        ui.input_action_button("logout_btn", "Logout")  # Show logout button
+                    )
+                )
+            )
+        else:
+            # Show login form and error message
+            return ui.card(
+                ui.card_header("Welcome to LAR Car Rental Admin Site"),
+                ui.card_body(
+                    ui.HTML("""
+                        <p>Please log in to gain access.</p>
+                    """),
+                    ui.HTML(f"<p style='color: red;'>{login_error_message()}</p>")  # Display the login error message in red
+                )
+            )
+
+    # Delete rental record when button is pressed
+    @reactive.Effect
+    def _():
+        if input.delete_rental_btn():
+            rental_id = input.rental_id_to_delete().strip()
+            if rental_id:
+                try:
+                    rental_id = int(rental_id)
+                    if delete_rental_by_id(rental_id):
+                        delete_message.set(f"Rental record with Rental ID {rental_id} has been successfully deleted.")
+                    else:
+                        delete_message.set(f"Failed to delete rental record with Rental ID {rental_id}.")
+                except ValueError:
+                    delete_message.set("Invalid Rental ID. Please enter a valid number.")
+            else:
+                delete_message.set("Please enter a Rental ID.")
+
+    # Insert new rental record when button is pressed
+    @reactive.Effect
+    def _():
+        if input.add_rental_btn():
+            customer_id = input.customer_id()
+            car_id = input.car_id()
+            rental_start_date = input.rental_start_date()
+            rental_end_date = input.rental_end_date()
+            total_amount = input.total_amount()
+            if insert_rental(customer_id, car_id, rental_start_date, rental_end_date, total_amount):
+                insert_message.set("Rental record has been successfully added.")
+            else:
+                insert_message.set("Failed to add rental record. Please try again.")
+
+# Run the app
+app = shiny.App(app_ui, server)
+app.run()
