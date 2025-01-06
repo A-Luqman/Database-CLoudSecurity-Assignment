@@ -17,7 +17,7 @@ DB_CONFIG = {<br/>
 - The username is "admin"<br/>
 - The password is "password"
 
-4. the server certificate query
+4. the server certificate query<br/>
 USE master;<br/>
 BACKUP CERTIFICATE MyServerCert<br/>
 TO FILE = 'C:\backupPATH\MyServerCert.cer'<br/>
