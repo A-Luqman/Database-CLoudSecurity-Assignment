@@ -16,3 +16,12 @@ DB_CONFIG = {<br/>
 3. Login<br/>
 - The username is "admin"<br/>
 - The password is "password"
+
+4. the server certificate query
+USE master;
+BACKUP CERTIFICATE MyServerCert
+TO FILE = 'C:\TDE_backups\MyServerCert.cer'
+WITH PRIVATE KEY (
+    FILE = 'C:\TDE_backups\MyServerCert.pvk',
+    ENCRYPTION BY PASSWORD = 'Pa$$w0rd'
+);
