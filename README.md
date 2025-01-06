@@ -7,6 +7,7 @@ DB_CONFIG = {<br/>
 }<br/>
 
 - Change the 'Server Name' to the SQL server name
+- It is Windows Authentication
 
 2. Run the Application<br/>
 - Run the python code and a website link will appear.<br/>
